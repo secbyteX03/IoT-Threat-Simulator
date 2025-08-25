@@ -1,24 +1,33 @@
 import { useEffect } from 'react';
+import { Socket } from 'socket.io-client';
 import useStore from '../store';
 
-export const useSimulationSocket = () => {
+export const useSimulationSocket = (socket?: Socket) => {
   const connectSocket = useStore(state => state.connectSocket);
   const disconnectSocket = useStore(state => state.disconnectSocket);
   const fetchDevices = useStore(state => state.fetchDevices);
   const connected = useStore(state => state.connected);
+  const setSocket = useStore(state => state.setSocket);
 
   useEffect(() => {
-    // Connect to WebSocket server when the component mounts
-    connectSocket();
-    
-    // Initial data fetch
-    fetchDevices().catch(console.error);
+    if (socket) {
+      // Set the socket in the store if provided
+      setSocket(socket);
+      
+      // Connect to WebSocket server
+      connectSocket();
+      
+      // Initial data fetch
+      fetchDevices().catch(console.error);
+    }
     
     // Clean up on unmount
     return () => {
-      disconnectSocket();
+      if (socket) {
+        disconnectSocket();
+      }
     };
-  }, [connectSocket, disconnectSocket, fetchDevices]);
+  }, [socket, connectSocket, disconnectSocket, fetchDevices, setSocket]);
 
   return { connected };
 };
