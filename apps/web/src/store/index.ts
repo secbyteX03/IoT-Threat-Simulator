@@ -9,6 +9,8 @@ import {
   DefenseState 
 } from '../../../server/src/types';
 
+export * from './useSimulationStore';
+
 // API client configuration
 const API_BASE_URL = 'http://localhost:5050/api';
 
@@ -40,6 +42,7 @@ interface StoreState {
   // Socket methods
   connectSocket: () => void;
   disconnectSocket: () => void;
+  setSocket: (socket: Socket | null) => void;
 }
 
 const initialState: Partial<StoreState> = {
@@ -197,35 +200,45 @@ const useStore = create<StoreState>()(
         },
         
         // Socket Methods
-        connectSocket: () => {
-          if (get().socket) return;
-          
-          const socket = io('http://localhost:5050');
-          
+        setSocket: (socket) => set({ socket }),
+        
+        connectSocket: () => set((state) => {
+          // Close existing socket if any
+          if (state.socket) {
+            state.socket.disconnect();
+          }
+
+          // Create new socket connection
+          const socket = io('http://localhost:5050', {
+            autoConnect: true,
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+          });
+
+          // Set up event listeners
           socket.on('connect', () => {
             set({ connected: true });
             console.log('Connected to WebSocket server');
           });
-          
+
           socket.on('disconnect', () => {
             set({ connected: false });
             console.log('Disconnected from WebSocket server');
           });
-          
+
           socket.on('state', (state: SimulationState) => {
             set({ state });
           });
-          
+
           socket.on('event', (event: SimulationEvent) => {
-            get().addEvent(event);
-            
-            // If this event is for the selected device, update the device details
-            if (event.deviceId === get().selectedDeviceId) {
-              get().fetchDevice(event.deviceId);
-            }
+            set((state) => ({
+              events: [event, ...state.events].slice(0, 1000), // Keep last 1000 events
+            }));
           });
-          
-          set({ socket });
+
+          return { socket };
+        }),
         },
         
         disconnectSocket: () => {
