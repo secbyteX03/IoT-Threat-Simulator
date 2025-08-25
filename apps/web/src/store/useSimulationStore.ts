@@ -1,12 +1,21 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Device, AttackState, DefenseState, SimulationEvent, SimulationScenario } from '../../../server/src/types';
-import { SimulationService } from '../services/simulationService';
+import { Socket } from 'socket.io-client';
+import { 
+  Device, 
+  AttackState, 
+  DefenseState, 
+  SimulationEvent, 
+  SimulationScenario,
+  SimulationState as ServerSimulationState
+} from '@/types/simulation';
 
-interface SimulationState {
+// Local types
+type SimulationState = {
   // Connection state
   isConnected: boolean;
   isSimulationRunning: boolean;
+  socket: Socket | null;
   
   // Data state
   devices: Device[];
@@ -16,12 +25,16 @@ interface SimulationState {
   defenseState: DefenseState;
   currentScenario: SimulationScenario | null;
   
-  // Service instance
-  simulationService: SimulationService;
-  
-  // Actions
+  // Server state
+  serverState: ServerSimulationState | null;
+};
+
+// Actions
+type SimulationActions = {
+  // Connection actions
   connect: (url?: string) => Promise<void>;
   disconnect: () => void;
+  setSocket: (socket: Socket | null) => void;
   
   // Device actions
   selectDevice: (deviceId: string | null) => void;
@@ -41,12 +54,21 @@ interface SimulationState {
   addEvent: (event: Omit<SimulationEvent, 'id' | 'timestamp'>) => void;
   clearEvents: () => void;
   
+  // Server state
+  updateServerState: (state: ServerSimulationState) => void;
+  
   // Initialization
   initialize: () => void;
   cleanup: () => void;
-}
+};
+
+export type UseSimulationStore = SimulationState & SimulationActions;
 
 const defaultAttackState: AttackState = {
+  synFlood: 0,
+  dictionaryAttack: 0,
+  mqttFlood: 0,
+  firmwareTamper: false,
   isActive: false,
   attackType: null,
   intensity: 0,
@@ -61,241 +83,169 @@ const defaultDefenseState: DefenseState = {
   encryptionEnabled: true,
   rateLimitingEnabled: true,
   anomalyDetectionEnabled: true,
-  lastUpdated: new Date().toISOString(),
+  lastUpdated: Date.now(),
+  defenseLevel: 'medium',
+  autoMitigation: true,
+  blockMaliciousIPs: true,
+  logMonitoring: true,
 };
 
 // Create the store with persistence for certain state
-const useSimulationStore = create<SimulationState>()(
+const useSimulationStore = create<UseSimulationStore>()(
   persist(
-    (set, get) => {
-      // Initialize service
-      const simulationService = SimulationService.getInstance();
+    (set, get) => ({
+      // Initial state
+      isConnected: false,
+      isSimulationRunning: false,
+      socket: null,
+      devices: [],
+      selectedDeviceId: null,
+      events: [],
+      attackState: defaultAttackState,
+      defenseState: defaultDefenseState,
+      currentScenario: null,
+      serverState: null,
+
+      // Connection actions
+      setSocket: (socket) => set({ socket }),
       
-      // Helper to safely update state
-      const safeSet = (updater: (state: SimulationState) => Partial<SimulationState>) => {
-        set((state) => ({
-          ...state,
-          ...updater(state),
-        }));
-      };
-      
-      return {
-        // Initial state
-        isConnected: false,
-        isSimulationRunning: false,
-        devices: [],
-        selectedDeviceId: null,
-        events: [],
-        attackState: { ...defaultAttackState },
-        defenseState: { ...defaultDefenseState },
-        currentScenario: null,
-        simulationService,
-        
-        // Actions
-        connect: async (url = '/') => {
-          try {
-            await simulationService.connect(url);
+      connect: async (url = 'http://localhost:5050') => {
+        try {
+          const { io } = await import('socket.io-client');
+          const socket = io(url);
+          
+          socket.on('connect', () => {
             set({ isConnected: true });
-          } catch (error) {
-            console.error('Failed to connect to simulation server:', error);
-            throw error;
-          }
-        },
-        
-        disconnect: () => {
-          simulationService.disconnect();
-          set({ isConnected: false });
-        },
-        
-        selectDevice: (deviceId) => {
-          set({ selectedDeviceId: deviceId });
-          
-          // Subscribe to metrics for the selected device
-          if (deviceId) {
-            simulationService.subscribeToMetrics(deviceId, [
-              'cpu', 'memory', 'networkIn', 'networkOut', 'battery'
-            ]);
-          }
-        },
-        
-        updateDevice: (device) => {
-          set((state) => ({
-            devices: state.devices.map((d) => 
-              d.id === device.id ? { ...d, ...device } : d
-            ),
-          }));
-        },
-        
-        startSimulation: () => {
-          simulationService.startSimulation();
-          set({ isSimulationRunning: true });
-        },
-        
-        stopSimulation: () => {
-          simulationService.stopSimulation();
-          set({ isSimulationRunning: false });
-        },
-        
-        resetSimulation: () => {
-          simulationService.resetSimulation();
-          set({
-            devices: [],
-            selectedDeviceId: null,
-            attackState: { ...defaultAttackState },
-            defenseState: { ...defaultDefenseState },
-            currentScenario: null,
-            isSimulationRunning: false,
+            console.log('Connected to WebSocket server');
           });
-        },
-        
-        loadScenario: (scenario) => {
-          simulationService.loadScenario(scenario);
+          
+          socket.on('disconnect', () => {
+            set({ isConnected: false });
+            console.log('Disconnected from WebSocket server');
+          });
+          
+          socket.on('state', (state: ServerSimulationState) => {
+            set({ serverState: state });
+          });
+          
+          socket.on('event', (event: SimulationEvent) => {
+            set((state) => ({
+              events: [event, ...state.events].slice(0, 1000), // Keep last 1000 events
+            }));
+          });
+          
+          set({ socket });
+        } catch (error) {
+          console.error('Failed to connect to WebSocket server:', error);
+        }
+      },
+      
+      disconnect: () => {
+        const { socket } = get();
+        if (socket) {
+          socket.disconnect();
+          set({ socket: null, isConnected: false });
+        }
+      },
+      
+      // Device actions
+      selectDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
+      
+      updateDevice: (device) => 
+        set((state) => ({
+          devices: state.devices.map((d) => (d.id === device.id ? device : d)),
+        })),
+      
+      // Simulation control
+      startSimulation: () => {
+        const { socket } = get();
+        if (socket) {
+          socket.emit('start');
+          set({ isSimulationRunning: true });
+        }
+      },
+      
+      stopSimulation: () => {
+        const { socket } = get();
+        if (socket) {
+          socket.emit('stop');
+          set({ isSimulationRunning: false });
+        }
+      },
+      
+      resetSimulation: () => {
+        const { socket } = get();
+        if (socket) {
+          socket.emit('reset');
+          set({
+            isSimulationRunning: false,
+            events: [],
+            attackState: defaultAttackState,
+            defenseState: defaultDefenseState,
+          });
+        }
+      },
+      
+      loadScenario: (scenario) => {
+        const { socket } = get();
+        if (socket) {
+          socket.emit('load-scenario', scenario);
           set({ currentScenario: scenario });
-        },
+        }
+      },
+      
+      // Attack/Defense actions
+      updateAttack: (attack) => 
+        set((state) => ({
+          attackState: { ...state.attackState, ...attack, isActive: true },
+        })),
+      
+      updateDefense: (defense) =>
+        set((state) => ({
+          defenseState: { ...state.defenseState, ...defense, isActive: true },
+        })),
+      
+      // Event handling
+      addEvent: (event) =>
+        set((state) => ({
+          events: [
+            {
+              ...event,
+              id: Date.now().toString(),
+              timestamp: Date.now(),
+            },
+            ...state.events,
+          ].slice(0, 1000),
+        })),
+      
+      clearEvents: () => set({ events: [] }),
+      
+      // Server state
+      updateServerState: (state) => set({ serverState: state }),
+      
+      // Initialization
+      initialize: () => {
+        const { connect } = get();
+        connect();
         
-        updateAttack: (attack) => {
-          simulationService.updateAttack(attack);
-          set((state) => ({
-            attackState: { ...state.attackState, ...attack },
-          }));
-        },
-        
-        updateDefense: (defense) => {
-          simulationService.updateDefense(defense);
-          set((state) => ({
-            defenseState: { ...state.defenseState, ...defense },
-          }));
-        },
-        
-        addEvent: (event) => {
-          const newEvent: SimulationEvent = {
-            ...event,
-            id: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
-          };
-          
-          set((state) => ({
-            events: [newEvent, ...state.events].slice(0, 1000), // Keep last 1000 events
-          }));
-        },
-        
-        clearEvents: () => {
-          set({ events: [] });
-        },
-        
-        // Initialize the store with event listeners
-        initialize: () => {
-          const { simulationService } = get();
-          
-          // Set up event listeners
-          const unsubscribers = [
-            // Connection status
-            simulationService.onConnect(() => set({ isConnected: true })),
-            simulationService.onDisconnect(() => set({ isConnected: false })),
-            
-            // Device updates
-            simulationService.onDevicesUpdate((devices) => {
-              set((state) => ({
-                devices: devices.map(device => ({
-                  ...device,
-                  // Preserve local state if device was updated
-                  ...state.devices.find(d => d.id === device.id)
-                }))
-              }));
-            }),
-            
-            simulationService.onDeviceUpdate((device) => {
-              set((state) => ({
-                devices: state.devices.map((d) => 
-                  d.id === device.id ? { ...d, ...device } : d
-                ),
-              }));
-            }),
-            
-            // Simulation control
-            simulationService.onSimulationStart(() => {
-              set({ isSimulationRunning: true });
-              get().addEvent({
-                type: 'system',
-                message: 'Simulation started',
-                severity: 'info',
-              });
-            }),
-            
-            simulationService.onSimulationStop(() => {
-              set({ isSimulationRunning: false });
-              get().addEvent({
-                type: 'system',
-                message: 'Simulation stopped',
-                severity: 'info',
-              });
-            }),
-            
-            // Attack/Defense updates
-            simulationService.onAttackUpdate((attack) => {
-              set((state) => ({
-                attackState: { ...state.attackState, ...attack },
-              }));
-              
-              if (attack.attackType) {
-                get().addEvent({
-                  type: 'attack',
-                  message: `Attack started: ${attack.attackType}`,
-                  severity: 'high',
-                  deviceId: attack.targetDeviceId || undefined,
-                });
-              }
-            }),
-            
-            simulationService.onDefenseUpdate((defense) => {
-              set((state) => ({
-                defenseState: { ...state.defenseState, ...defense },
-              }));
-              
-              get().addEvent({
-                type: 'defense',
-                message: 'Defense configuration updated',
-                severity: 'info',
-              });
-            }),
-            
-            // Scenario loaded
-            simulationService.onScenarioLoaded((scenario) => {
-              set({ currentScenario: scenario });
-              get().addEvent({
-                type: 'system',
-                message: `Scenario loaded: ${scenario.name}`,
-                severity: 'info',
-              });
-            }),
-            
-            // Custom events
-            simulationService.onEvent((event) => {
-              get().addEvent(event);
-            }),
-          ];
-          
-          // Cleanup function
-          return () => {
-            unsubscribers.forEach((unsubscribe) => unsubscribe());
-            simulationService.disconnect();
-          };
-        },
-        
-        // Cleanup function
-        cleanup: () => {
-          simulationService.disconnect();
-        },
-      };
-    },
+        // Set up any other initialization logic here
+      },
+      
+      // Cleanup
+      cleanup: () => {
+        const { disconnect } = get();
+        disconnect();
+      },
+    }),
     {
       name: 'iot-simulation-storage',
       partialize: (state) => ({
-        // Persist these fields
         devices: state.devices,
+        selectedDeviceId: state.selectedDeviceId,
         attackState: state.attackState,
         defenseState: state.defenseState,
         currentScenario: state.currentScenario,
+        serverState: state.serverState,
       }),
     }
   )

@@ -1,20 +1,38 @@
-import { useStore } from './store';
+import { useSimulationStore } from './store/useSimulationStore';
 import Dashboard from './components/Dashboard';
 import ConnectionStatus from './components/ConnectionStatus';
 import { useSimulationSocket } from './hooks/useSimulationSocket';
+import { Socket } from 'socket.io-client';
+import { useEffect } from 'react';
 
-function App() {
+interface AppProps {
+  socket: Socket;
+}
+
+function App({ socket }: AppProps) {
   // Initialize WebSocket connection and get store actions
-  const { connected } = useSimulationSocket();
+  const { connect, disconnect, initialize } = useSimulationStore();
+  const { connected } = useSimulationSocket(socket);
   const { 
     startSimulation, 
-    pauseSimulation, 
+    stopSimulation: pauseSimulation, 
     resetSimulation, 
-    setAttack, 
-    setDefense,
-    setSelectedDevice,
-    clearEvents
-  } = useStore();
+    updateAttack: setAttack, 
+    updateDefense: setDefense,
+    selectDevice: setSelectedDevice,
+    clearEvents,
+    isSimulationRunning
+  } = useSimulationStore();
+
+  // Initialize store and connect to WebSocket
+  useEffect(() => {
+    initialize();
+    connect();
+    
+    return () => {
+      disconnect();
+    };
+  }, [initialize, connect, disconnect]);
 
   // Event handlers that use the store methods
   const handleDeviceSelect = (deviceId: string) => {
