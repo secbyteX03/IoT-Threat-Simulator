@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Security • IoT Threat Simulator</title>
+    <meta name="description" content="Comprehensive simulation environment for testing IoT device vulnerabilities and attack vectors in controlled settings." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Preload Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Preload Fira Code for monospace -->
+    <link 
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" 
+      rel="stylesheet"
+    />
+  </head>
+  <body class="h-full bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Safety Banner (will be moved to React component) -->
+    <div id="safety-banner" class="fixed bottom-0 left-0 right-0 bg-yellow-50 dark:bg-yellow-900/30 border-t border-yellow-200 dark:border-yellow-800 p-2 text-center text-sm text-yellow-800 dark:text-yellow-200 z-50">
+      <div class="container mx-auto px-4">
+        <div class="flex items-center justify-center">
+          <svg class="h-5 w-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+          </svg>
+          <span>Simulation only. No real network activity.</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
