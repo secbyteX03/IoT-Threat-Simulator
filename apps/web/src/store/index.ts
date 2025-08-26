@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
+import { devtools, persist, StateStorage, StorageValue } from 'zustand/middleware';
 import { io, Socket } from 'socket.io-client';
 import { 
   SimulationState, 
@@ -69,29 +69,33 @@ const initialState: Partial<StoreState> = {
   connected: false,
 };
 
-const useStore = create<StoreState>()(
-  devtools(
-    persist(
-      (set, get) => ({
+// Define the store type
+type Store = ReturnType<typeof createStore>;
+
+type SetState = (partial: Partial<StoreState> | ((state: StoreState) => Partial<StoreState>)) => void;
+type GetState = () => StoreState;
+
+// Define the store creator function with proper types
+const createStore = (set: any, get: any) => ({
         ...initialState,
         
-        setState: (state) => set({ state }),
+        setState: (state: SimulationState) => set({ state }),
         
-        addEvent: (event) => 
-          set((prev) => ({
+        addEvent: (event: SimulationEvent) => 
+          set((prev: StoreState) => ({
             events: [event, ...prev.events].slice(0, 200), // Keep last 200 events
           })),
           
         clearEvents: () => set({ events: [] }),
         
-        setSelectedDevice: (deviceId) => set({ selectedDeviceId: deviceId }),
+        setSelectedDevice: (deviceId: string | null) => set({ selectedDeviceId: deviceId }),
         
-        setConnected: (connected) => set({ connected }),
+        setConnected: (connected: boolean) => set({ connected }),
         
-        getSelectedDevice: () => {
-          const state = get().state;
-          const deviceId = get().selectedDeviceId;
-          return state.devices.find(d => d.id === deviceId);
+        getSelectedDevice: (): Device | undefined => {
+          const state = get().state as SimulationState;
+          const deviceId = get().selectedDeviceId as string;
+          return state.devices.find((d: Device) => d.id === deviceId);
         },
         
         // API Methods
@@ -125,7 +129,7 @@ const useStore = create<StoreState>()(
           }
         },
         
-        setAttack: async (attack) => {
+        setAttack: async (attack: Partial<AttackState>) => {
           try {
             const [attackType, value] = Object.entries(attack)[0];
             let endpoint = '';
@@ -158,7 +162,7 @@ const useStore = create<StoreState>()(
           }
         },
         
-        setDefense: async (defense) => {
+        setDefense: async (defense: Partial<DefenseState>) => {
           try {
             const [defenseType, value] = Object.entries(defense)[0];
             const endpoint = defenseType.toLowerCase().replace(/([A-Z])/g, '-$1').toLowerCase();
@@ -200,12 +204,13 @@ const useStore = create<StoreState>()(
         },
         
         // Socket Methods
-        setSocket: (socket) => set({ socket }),
+        setSocket: (socket: Socket | null) => set({ socket }),
         
-        connectSocket: () => set((state) => {
-          // Close existing socket if any
+        connectSocket: () => set((state: StoreState) => {
+            // Close existing socket if any
           if (state.socket) {
             state.socket.disconnect();
+            set({ socket: null, connected: false });
           }
 
           // Create new socket connection
@@ -239,24 +244,29 @@ const useStore = create<StoreState>()(
 
           return { socket };
         }),
-        },
         
         disconnectSocket: () => {
-          const { socket } = get();
-          if (socket) {
-            socket.disconnect();
+          const store = get();
+          if (store.socket) {
+            store.socket.disconnect();
             set({ socket: null, connected: false });
           }
-        },
-      }),
+        }
+      });
+
+
+// Create the store with middleware
+const useStore = create<Store>()(
+  devtools(
+    persist(
+      (set: any, get: any) => createStore(set, get), 
       {
-        name: 'iot-threat-simulator-storage',
-        partialize: (state) => ({
-          // Only persist UI preferences, not the simulation state
-          events: state.events,
-        }),
-      }
-    ),
+      name: 'iot-threat-simulator-storage',
+      partialize: (state: any) => ({
+        // Only persist UI preferences, not the simulation state
+        events: state.events,
+      }),
+    }),
     {
       name: 'IoT Threat Simulator',
       enabled: process.env.NODE_ENV === 'development',
