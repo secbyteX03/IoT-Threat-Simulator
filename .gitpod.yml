@@ -1,0 +1,27 @@
+tasks:
+  - name: Web App
+    init: |
+      cd apps/web
+      npm install
+      npm run dev
+    openMode: split-right
+
+  - name: Backend Server
+    init: |
+      cd apps/server
+      npm install
+      npm run dev
+
+ports:
+  - port: 3000
+    onOpen: open-preview
+  - port: 5050
+    onOpen: open-preview
+
+vscode:
+  extensions:
+    - dbaeumer.vscode-eslint
+    - esbenp.prettier-vscode
+    - rvest.vs-code-prettier-eslint
+    - bradlc.vscode-tailwindcss
+    - eamodio.gitlens
