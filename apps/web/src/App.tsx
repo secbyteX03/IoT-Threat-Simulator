@@ -3,13 +3,49 @@ import Dashboard from './components/Dashboard';
 import ConnectionStatus from './components/ConnectionStatus';
 import { useSimulationSocket } from './hooks/useSimulationSocket';
 import { Socket } from 'socket.io-client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { ThreatIntelligenceDashboard } from './components/dashboard/ThreatIntelligenceDashboard';
+import { IconButton, Toolbar, AppBar, Box, CssBaseline, Tooltip, Typography } from '@mui/material';
+import SecurityIcon from '@mui/icons-material/Security';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 interface AppProps {
   socket: Socket;
 }
 
+// Create a theme instance.
+const defaultTheme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+    error: {
+      main: '#f44336',
+    },
+    background: {
+      default: '#f5f5f5',
+    },
+  },
+  typography: {
+    fontFamily: [
+      '-apple-system',
+      'BlinkMacSystemFont',
+      '"Segoe UI"',
+      'Roboto',
+      '"Helvetica Neue"',
+      'Arial',
+      'sans-serif',
+    ].join(','),
+  },
+});
+
 function App({ socket }: AppProps) {
+  const [dashboardOpen, setDashboardOpen] = useState(false);
+  
   // Initialize WebSocket connection and get store actions
   const { connect, disconnect, initialize } = useSimulationStore();
   const { connected } = useSimulationSocket(socket);
@@ -21,7 +57,9 @@ function App({ socket }: AppProps) {
     updateDefense: setDefense,
     selectDevice: setSelectedDevice,
     clearEvents,
-    isSimulationRunning
+    isSimulationRunning,
+    devices,
+    events
   } = useSimulationStore();
 
   // Initialize store and connect to WebSocket
@@ -33,55 +71,89 @@ function App({ socket }: AppProps) {
       disconnect();
     };
   }, [initialize, connect, disconnect]);
+  
+  const toggleDashboard = () => {
+    setDashboardOpen(!dashboardOpen);
+  };
 
   // Event handlers that use the store methods
   const handleDeviceSelect = (deviceId: string) => {
     setSelectedDevice(deviceId);
   };
-
-  const handleAttackUpdate = (attack: any) => {
-    setAttack(attack);
+  
+  // Event handlers that use the store methods
+  const handleDeviceSelect = (deviceId: string) => {
+    setSelectedDevice(deviceId);
   };
 
-  const handleDefenseUpdate = (defense: any) => {
-    setDefense(defense);
-  };
-
-  const handleStartSimulation = () => {
-    startSimulation();
-  };
-
-  const handlePauseSimulation = () => {
-    pauseSimulation();
-  };
-
-  const handleResetSimulation = () => {
-    clearEvents();
-    resetSimulation();
-  };
-
+  // Render the main application with dashboard toggle
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-bold text-gray-900">IoT Threat Simulator</h1>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <Dashboard
-          onDeviceSelect={handleDeviceSelect}
-          onAttackUpdate={handleAttackUpdate}
-          onDefenseUpdate={handleDefenseUpdate}
-          onStart={handleStartSimulation}
-          onPause={handlePauseSimulation}
-          onReset={handleResetSimulation}
-        />
-      </main>
-
-      <ConnectionStatus />
-      <SafetyBanner />
-    </div>
+    <ThemeProvider theme={defaultTheme}>
+      {dashboardOpen ? (
+        // Threat Intelligence Dashboard View
+        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          <CssBaseline />
+          <AppBar position="static" color="default" elevation={1}>
+            <Toolbar>
+              <Tooltip title="Back to Device Dashboard">
+                <IconButton 
+                  edge="start" 
+                  color="inherit" 
+                  onClick={toggleDashboard}
+                  sx={{ mr: 2 }}
+                >
+                  <DashboardIcon />
+                </IconButton>
+              </Tooltip>
+              <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                Threat Intelligence Dashboard
+              </Typography>
+              <ConnectionStatus connected={connected} />
+            </Toolbar>
+          </AppBar>
+          <Box sx={{ flexGrow: 1, p: 3 }}>
+            <ThreatIntelligenceDashboard 
+              isOpen={dashboardOpen} 
+              onClose={() => setDashboardOpen(false)} 
+            />
+          </Box>
+        </Box>
+      ) : (
+        // Main Dashboard View
+        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          <CssBaseline />
+          <AppBar position="static" color="default" elevation={1}>
+            <Toolbar>
+              <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                IoT Threat Simulator
+              </Typography>
+              <Tooltip title="View Threat Intelligence Dashboard">
+                <IconButton 
+                  color="inherit" 
+                  onClick={toggleDashboard}
+                  sx={{ mr: 1 }}
+                >
+                  <SecurityIcon />
+                </IconButton>
+              </Tooltip>
+              <ConnectionStatus connected={connected} />
+            </Toolbar>
+          </AppBar>
+          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+            <Dashboard 
+              onDeviceSelect={handleDeviceSelect}
+              onStartSimulation={startSimulation}
+              onPauseSimulation={pauseSimulation}
+              onResetSimulation={resetSimulation}
+              onSetAttack={setAttack}
+              onSetDefense={setDefense}
+              onClearEvents={clearEvents}
+              isSimulationRunning={isSimulationRunning}
+            />
+          </Box>
+        </Box>
+      )}
+    </ThemeProvider>
   );
 }
 
